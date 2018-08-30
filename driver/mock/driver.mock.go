@@ -34,7 +34,7 @@ func (m *MockDriver) EXPECT() *MockDriverMockRecorder {
 }
 
 // Decr mocks base method
-func (m *MockDriver) Decr(arg0, arg1 string) (string, error) {
+func (m *MockDriver) Decr(arg0 string, arg1 interface{}) (string, error) {
 	ret := m.ctrl.Call(m, "Decr", arg0, arg1)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
@@ -97,7 +97,7 @@ func (mr *MockDriverMockRecorder) Get(arg0 interface{}) *gomock.Call {
 }
 
 // HDecr mocks base method
-func (m *MockDriver) HDecr(arg0, arg1, arg2 string) (string, error) {
+func (m *MockDriver) HDecr(arg0, arg1 string, arg2 interface{}) (string, error) {
 	ret := m.ctrl.Call(m, "HDecr", arg0, arg1, arg2)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
@@ -161,7 +161,7 @@ func (mr *MockDriverMockRecorder) HGetAll(arg0 interface{}) *gomock.Call {
 }
 
 // HIncr mocks base method
-func (m *MockDriver) HIncr(arg0, arg1, arg2 string) (string, error) {
+func (m *MockDriver) HIncr(arg0, arg1 string, arg2 interface{}) (string, error) {
 	ret := m.ctrl.Call(m, "HIncr", arg0, arg1, arg2)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
@@ -187,7 +187,7 @@ func (mr *MockDriverMockRecorder) HMGet(arg0, arg1 interface{}) *gomock.Call {
 }
 
 // HMSet mocks base method
-func (m *MockDriver) HMSet(arg0 string, arg1 map[string]string) error {
+func (m *MockDriver) HMSet(arg0 string, arg1 map[string]interface{}) error {
 	ret := m.ctrl.Call(m, "HMSet", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
@@ -199,7 +199,7 @@ func (mr *MockDriverMockRecorder) HMSet(arg0, arg1 interface{}) *gomock.Call {
 }
 
 // HSet mocks base method
-func (m *MockDriver) HSet(arg0, arg1, arg2 string) error {
+func (m *MockDriver) HSet(arg0, arg1 string, arg2 interface{}) error {
 	ret := m.ctrl.Call(m, "HSet", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
@@ -211,7 +211,7 @@ func (mr *MockDriverMockRecorder) HSet(arg0, arg1, arg2 interface{}) *gomock.Cal
 }
 
 // Incr mocks base method
-func (m *MockDriver) Incr(arg0, arg1 string) (string, error) {
+func (m *MockDriver) Incr(arg0 string, arg1 interface{}) (string, error) {
 	ret := m.ctrl.Call(m, "Incr", arg0, arg1)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
@@ -249,7 +249,7 @@ func (mr *MockDriverMockRecorder) MGet(arg0 interface{}) *gomock.Call {
 }
 
 // MSet mocks base method
-func (m *MockDriver) MSet(arg0 map[string]string) error {
+func (m *MockDriver) MSet(arg0 map[string]interface{}) error {
 	ret := m.ctrl.Call(m, "MSet", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
@@ -273,7 +273,7 @@ func (mr *MockDriverMockRecorder) Options() *gomock.Call {
 }
 
 // Set mocks base method
-func (m *MockDriver) Set(arg0, arg1 string) error {
+func (m *MockDriver) Set(arg0 string, arg1 interface{}) error {
 	ret := m.ctrl.Call(m, "Set", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0

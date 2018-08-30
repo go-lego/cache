@@ -18,13 +18,13 @@ type Driver interface {
 	Get(key string) (string, error)
 
 	// Set key-value pair
-	Set(key string, value string) error
+	Set(key string, value interface{}) error
 
 	// MGet get multiple keys
 	MGet(keys []string) (map[string]string, error)
 
 	// MSet set multiple key-value pairs
-	MSet(kvs map[string]string) error
+	MSet(kvs map[string]interface{}) error
 
 	// Del delete specified key
 	Del(key string) error
@@ -36,10 +36,10 @@ type Driver interface {
 	Expire(key string, ex int64) error
 
 	// Incr increment key
-	Incr(key string, delta string) (string, error)
+	Incr(key string, delta interface{}) (string, error)
 
 	// Decr Decrement key
-	Decr(key string, delta string) (string, error)
+	Decr(key string, delta interface{}) (string, error)
 
 	// func for hashes
 
@@ -47,13 +47,13 @@ type Driver interface {
 	HGet(key string, hk string) (string, error)
 
 	// HSet set hash key
-	HSet(key string, hk string, value string) error
+	HSet(key string, hk string, value interface{}) error
 
 	// HMGet get multiple hash keys
 	HMGet(key string, hks []string) (map[string]string, error)
 
 	// HMSet set multiple hash keys
-	HMSet(key string, kvs map[string]string) error
+	HMSet(key string, kvs map[string]interface{}) error
 
 	// HGetAll get all hash keys
 	HGetAll(key string) (map[string]string, error)
@@ -65,10 +65,10 @@ type Driver interface {
 	HExists(key string, hk string) (bool, error)
 
 	// HIncr increment value of hash key
-	HIncr(key string, hk string, delta string) (string, error)
+	HIncr(key string, hk string, delta interface{}) (string, error)
 
 	// HDecr decrement value of hash key
-	HDecr(key string, hk string, delta string) (string, error)
+	HDecr(key string, hk string, delta interface{}) (string, error)
 }
 
 var (

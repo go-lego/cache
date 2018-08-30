@@ -51,6 +51,24 @@ type transImpl struct {
 	cmds []*command
 }
 
+func newTransImpl(c *cacheImpl) *transImpl {
+	ts, ok := c.options.Driver.(TransSupport)
+	if ok {
+		ts.BeforeCreate()
+	}
+	tx := &transImpl{
+		active: true,
+		c:      c,
+		cmds:   []*command{},
+	}
+
+	if ok {
+		ts.AfterCreate()
+	}
+
+	return tx
+}
+
 // Commit transaction
 func (t *transImpl) Commit() error {
 	ts, ok := t.c.options.Driver.(TransSupport)
@@ -74,7 +92,8 @@ func (t *transImpl) Commit() error {
 	if ok {
 		ts.AfterCommit()
 	}
-	t.cmds = nil
+	t.active = false
+	//t.cmds = []*command{}
 	return nil
 }
 
@@ -99,14 +118,12 @@ func (t *transImpl) Rollback() error {
 	if ok {
 		ts.AfterRollback()
 	}
-	t.cmds = nil
+	t.active = false
+	//t.cmds = []*command{}
 	return nil
 }
 
-func (t *transImpl) onSet(key string, value string) {
-	if t.cmds == nil {
-		t.cmds = []*command{}
-	}
+func (t *transImpl) onSet(key string, value interface{}) {
 	t.cmds = append(t.cmds, &command{
 		t:    typeSet,
 		args: []interface{}{key, value},
@@ -114,9 +131,6 @@ func (t *transImpl) onSet(key string, value string) {
 }
 
 func (t *transImpl) onDel(key string) {
-	if t.cmds == nil {
-		t.cmds = []*command{}
-	}
 	t.cmds = append(t.cmds, &command{
 		t:    typeDel,
 		args: []interface{}{key},
@@ -124,29 +138,20 @@ func (t *transImpl) onDel(key string) {
 }
 
 func (t *transImpl) onExpire(key string, ex int64) {
-	if t.cmds == nil {
-		t.cmds = []*command{}
-	}
 	t.cmds = append(t.cmds, &command{
 		t:    typeExpire,
 		args: []interface{}{key, ex},
 	})
 }
 
-func (t *transImpl) onIncr(key string, delta string) {
-	if t.cmds == nil {
-		t.cmds = []*command{}
-	}
+func (t *transImpl) onIncr(key string, delta interface{}) {
 	t.cmds = append(t.cmds, &command{
 		t:    typeIncr,
 		args: []interface{}{key, delta},
 	})
 }
 
-func (t *transImpl) onDecr(key string, delta string) {
-	if t.cmds == nil {
-		t.cmds = []*command{}
-	}
+func (t *transImpl) onDecr(key string, delta interface{}) {
 	t.cmds = append(t.cmds, &command{
 		t:    typeDecr,
 		args: []interface{}{key, delta},

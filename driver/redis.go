@@ -3,7 +3,7 @@ package driver
 import (
 	"errors"
 	"fmt"
-	"strings"
+	"sort"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -17,6 +17,7 @@ type redisPool interface {
 type redisDriver struct {
 	options Options
 	pool    redisPool
+	test    bool // test mode is used for fixing the issue caused by map iterating
 }
 
 // newredisDriver create new redis cache
@@ -62,7 +63,7 @@ func (r *redisDriver) Get(key string) (string, error) {
 }
 
 // Set key-value pair
-func (r *redisDriver) Set(key string, value string) error {
+func (r *redisDriver) Set(key string, value interface{}) error {
 	c := r.pool.Get()
 	defer c.Close()
 	_, err := c.Do("SET", key, value)
@@ -77,7 +78,9 @@ func (r *redisDriver) MGet(keys []string) (map[string]string, error) {
 	for i, k := range keys {
 		tmp[i] = k
 	}
+	// fmt.Println("Arguments:", tmp)
 	arr, err := redis.Strings(c.Do("MGET", tmp...))
+	// fmt.Println("Response:", arr)
 	if err != nil {
 		return nil, err
 	}
@@ -89,15 +92,28 @@ func (r *redisDriver) MGet(keys []string) (map[string]string, error) {
 }
 
 // MSet set multiple key-value pairs
-func (r *redisDriver) MSet(kvs map[string]string) error {
+func (r *redisDriver) MSet(kvs map[string]interface{}) error {
 	c := r.pool.Get()
 	defer c.Close()
 	tmp := make([]interface{}, len(kvs)*2)
 	i := 0
-	for k, v := range kvs {
-		tmp[i] = k
-		tmp[i+1] = v
-		i += 2
+	if r.test { // sort keys in test mode
+		sks := []string{}
+		for k := range kvs {
+			sks = append(sks, k)
+		}
+		sort.Slice(sks, func(i, j int) bool { return sks[i] < sks[j] })
+		for _, k := range sks {
+			tmp[i] = k
+			tmp[i+1] = kvs[k]
+			i += 2
+		}
+	} else {
+		for k, v := range kvs {
+			tmp[i] = k
+			tmp[i+1] = v
+			i += 2
+		}
 	}
 	_, err := redis.String(c.Do("MSET", tmp...))
 	if err != nil {
@@ -130,17 +146,31 @@ func (r *redisDriver) Expire(key string, ex int64) error {
 }
 
 // Incr increment key
-func (r *redisDriver) Incr(key string, delta string) (string, error) {
+func (r *redisDriver) Incr(key string, delta interface{}) (string, error) {
 	c := r.pool.Get()
 	defer c.Close()
-	return redis.String(c.Do("INCRBY", key, delta))
+	switch delta.(type) {
+	case int, int32, int64:
+		return redis.String(c.Do("INCRBY", key, delta))
+	case float32, float64:
+		return redis.String(c.Do("INCRBYFLOAT", key, delta))
+	}
+	return "", errors.New("driver redis: invalid delta value")
 }
 
 // Decr increment key
-func (r *redisDriver) Decr(key string, delta string) (string, error) {
+func (r *redisDriver) Decr(key string, delta interface{}) (string, error) {
 	c := r.pool.Get()
 	defer c.Close()
-	return redis.String(c.Do("DECRBY", key, delta))
+	switch delta.(type) {
+	case int, int32, int64:
+		return redis.String(c.Do("DECRBY", key, delta))
+	case float32:
+		return redis.String(c.Do("INCRBYFLOAT", key, -delta.(float32)))
+	case float64:
+		return redis.String(c.Do("INCRBYFLOAT", key, -delta.(float64)))
+	}
+	return "", errors.New("driver redis: invalid delta value")
 }
 
 // func for hashes
@@ -153,7 +183,7 @@ func (r *redisDriver) HGet(key string, hk string) (string, error) {
 }
 
 // HSet set hash key
-func (r *redisDriver) HSet(key string, hk string, value string) error {
+func (r *redisDriver) HSet(key string, hk string, value interface{}) error {
 	c := r.pool.Get()
 	defer c.Close()
 	_, err := redis.String(c.Do("HSET", key, hk, value))
@@ -173,16 +203,29 @@ func (r *redisDriver) HMGet(key string, hks []string) (map[string]string, error)
 }
 
 // HMSet set multiple hash keys
-func (r *redisDriver) HMSet(key string, kvs map[string]string) error {
+func (r *redisDriver) HMSet(key string, kvs map[string]interface{}) error {
 	c := r.pool.Get()
 	defer c.Close()
 	tmp := make([]interface{}, len(kvs)*2+1)
 	tmp[0] = key
 	i := 1
-	for k, v := range kvs {
-		tmp[i] = k
-		tmp[i+1] = v
-		i += 2
+	if r.test { // sort keys in test mode
+		sks := []string{}
+		for k := range kvs {
+			sks = append(sks, k)
+		}
+		sort.Slice(sks, func(i, j int) bool { return sks[i] < sks[j] })
+		for _, k := range sks {
+			tmp[i] = k
+			tmp[i+1] = kvs[k]
+			i += 2
+		}
+	} else {
+		for k, v := range kvs {
+			tmp[i] = k
+			tmp[i+1] = v
+			i += 2
+		}
 	}
 	_, err := redis.String(c.Do("HMSET", tmp...))
 	return err
@@ -211,24 +254,63 @@ func (r *redisDriver) HExists(key string, hk string) (bool, error) {
 }
 
 // HIncr increment value of hash key
-func (r *redisDriver) HIncr(key string, hk string, delta string) (string, error) {
+func (r *redisDriver) HIncr(key string, hk string, delta interface{}) (string, error) {
 	c := r.pool.Get()
 	defer c.Close()
-	return redis.String(c.Do("HINCRBY", key, hk, delta))
+	switch delta.(type) {
+	case int, int32, int64:
+		return redis.String(c.Do("HINCRBY", key, hk, delta))
+	case float32, float64:
+		return redis.String(c.Do("HINCRBYFLOAT", key, hk, delta))
+	}
+	return "", errors.New("driver redis: invalid delta value")
 }
 
 // HDecr decrement value of hash key
-func (r *redisDriver) HDecr(key string, hk string, delta string) (string, error) {
+func (r *redisDriver) HDecr(key string, hk string, delta interface{}) (string, error) {
 	c := r.pool.Get()
 	defer c.Close()
-	nd := ""
-	i := strings.Index(delta, "-")
-	if i == -1 {
-		nd = fmt.Sprintf("-%s", delta)
-	} else if i == 0 {
-		nd = delta[1:]
-	} else {
-		return "", errors.New("driver redis: invalid delta string")
+	switch delta.(type) {
+	case int:
+		return redis.String(c.Do("HINCRBY", key, hk, -delta.(int)))
+	case int32:
+		return redis.String(c.Do("HINCRBY", key, hk, -delta.(int32)))
+	case int64:
+		return redis.String(c.Do("HINCRBY", key, hk, -delta.(int64)))
+	case float32:
+		return redis.String(c.Do("HINCRBYFLOAT", key, hk, -delta.(float32)))
+	case float64:
+		return redis.String(c.Do("HINCRBYFLOAT", key, hk, -delta.(float64)))
 	}
-	return redis.String(c.Do("HINCRBY", key, hk, nd))
+	return "", errors.New("driver redis: invalid delta value")
+}
+
+// BeforeCreate called before transaction creation
+func (r *redisDriver) BeforeCreate() error {
+	return nil
+}
+
+// AfterCreate called after transaction creation
+func (r *redisDriver) AfterCreate() error {
+	return nil
+}
+
+// BeforeCommit called before transaction commit
+func (r *redisDriver) BeforeCommit() error {
+	return nil
+}
+
+// AfterCommit called after transaction commit
+func (r *redisDriver) AfterCommit() error {
+	return nil
+}
+
+// BeforeRollback called before transaction rollback
+func (r *redisDriver) BeforeRollback() error {
+	return nil
+}
+
+// AfterRollback called after transaction rollback
+func (r *redisDriver) AfterRollback() error {
+	return nil
 }

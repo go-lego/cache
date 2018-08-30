@@ -76,11 +76,12 @@ func TestRedisMSet(t *testing.T) {
 	c := redigomock.NewConn()
 	r := &redisDriver{
 		pool: &testRedisPool{conn: c},
+		test: true,
 	}
 
-	c.Command("MSET", "test1", "ok", "test2", "good").Expect("OK")
+	c.Command("MSET", "test1", "ok", "test2", "good", "test3", 100).Expect("OK")
 
-	err := r.MSet(map[string]string{"test1": "ok", "test2": "good"})
+	err := r.MSet(map[string]interface{}{"test1": "ok", "test2": "good", "test3": 100})
 	if err != nil {
 		t.Error("No error was expected to MSet, but: ", err)
 	}
@@ -145,13 +146,22 @@ func TestRedisIncr(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("INCRBY", "test1", "13").Expect("100")
+	c.Command("INCRBY", "test1", 13).Expect("100")
+	c.Command("INCRBYFLOAT", "test2", 10.5).Expect("100.01")
 
-	nv, err := r.Incr("test1", "13")
+	nv, err := r.Incr("test1", 13)
 	if err != nil {
 		t.Error("No error was expected to incr, but: ", err)
 	}
 	if nv != "100" {
+		t.Error("Incr return value incorrect")
+	}
+
+	nv, err = r.Incr("test2", 10.5)
+	if err != nil {
+		t.Error("No error was expected to incr, but: ", err)
+	}
+	if nv != "100.01" {
 		t.Error("Incr return value incorrect")
 	}
 }
@@ -162,14 +172,23 @@ func TestRedisDecr(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("DECRBY", "test1", "13").Expect("100")
+	c.Command("DECRBY", "test1", 13).Expect("100")
+	c.Command("INCRBYFLOAT", "test2", -10.5).Expect("100.01")
 
-	nv, err := r.Decr("test1", "13")
+	nv, err := r.Decr("test1", 13)
 	if err != nil {
 		t.Error("No error was expected to decr, but: ", err)
 	}
 	if nv != "100" {
 		t.Error("Decr return value incorrect")
+	}
+
+	nv, err = r.Decr("test2", 10.5)
+	if err != nil {
+		t.Error("No error was expected to incr, but: ", err)
+	}
+	if nv != "100.01" {
+		t.Error("Incr return value incorrect")
 	}
 }
 
@@ -225,11 +244,12 @@ func TestRedisHMSet(t *testing.T) {
 	c := redigomock.NewConn()
 	r := &redisDriver{
 		pool: &testRedisPool{conn: c},
+		test: true,
 	}
 
 	c.Command("HMSET", "test1", "k1", "ok", "k2", "good", "k3", "1").Expect("ok")
 
-	err := r.HMSet("test1", map[string]string{"k1": "ok", "k2": "good", "k3": "1"})
+	err := r.HMSet("test1", map[string]interface{}{"k1": "ok", "k2": "good", "k3": "1"})
 	if err != nil {
 		t.Error("No error was expected to HMSet, but: ", err)
 	}
@@ -297,13 +317,22 @@ func TestRedisHIncr(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("HINCRBY", "test1", "k1", "13").Expect("100")
+	c.Command("HINCRBY", "test1", "k1", 13).Expect("100")
+	c.Command("HINCRBYFLOAT", "test1", "k2", 10.5).Expect("100.01")
 
-	nv, err := r.HIncr("test1", "k1", "13")
+	nv, err := r.HIncr("test1", "k1", 13)
 	if err != nil {
 		t.Error("No error was expected to HIncr, but: ", err)
 	}
 	if nv != "100" {
+		t.Error("HIncr return value incorrect")
+	}
+
+	nv, err = r.HIncr("test1", "k2", 10.5)
+	if err != nil {
+		t.Error("No error was expected to HIncr, but: ", err)
+	}
+	if nv != "100.01" {
 		t.Error("HIncr return value incorrect")
 	}
 }
@@ -314,10 +343,10 @@ func TestRedisHDecr(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("HINCRBY", "test1", "k1", "-13").Expect("100")
-	c.Command("HINCRBY", "test1", "k1", "13").Expect("100")
+	c.Command("HINCRBY", "test1", "k1", -13).Expect("100")
+	c.Command("HINCRBYFLOAT", "test1", "k2", -10.5).Expect("100.01")
 
-	nv, err := r.HDecr("test1", "k1", "13")
+	nv, err := r.HDecr("test1", "k1", 13)
 	if err != nil {
 		t.Error("No error was expected to HDecr, but: ", err)
 	}
@@ -325,15 +354,15 @@ func TestRedisHDecr(t *testing.T) {
 		t.Error("HDecr return value incorrect")
 	}
 
-	nv, err = r.HDecr("test1", "k1", "-13")
+	nv, err = r.HDecr("test1", "k2", 10.5)
 	if err != nil {
 		t.Error("No error was expected to HDecr, but: ", err)
 	}
-	if nv != "100" {
+	if nv != "100.01" {
 		t.Error("HDecr return value incorrect")
 	}
 
-	_, err = r.HDecr("test1", "k1", "1-3")
+	_, err = r.HDecr("test1", "k3", "13")
 	if err == nil {
 		t.Error("'Invalid delta' error was expected to HDecr, but: ", err)
 	}

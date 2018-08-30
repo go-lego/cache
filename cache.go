@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"fmt"
+
 	"github.com/go-lego/cache/driver"
 )
 
@@ -24,13 +26,13 @@ type Cache interface {
 	Get(key string) (string, error)
 
 	// Set key-value pair
-	Set(key string, value string) error
+	Set(key string, value interface{}) error
 
 	// MGet get multiple keys
 	MGet(keys []string) (map[string]string, error)
 
 	// MSet set multiple key-value pairs
-	MSet(kvs map[string]string) error
+	MSet(kvs map[string]interface{}) error
 
 	// Del delete specified key
 	Del(key string) error
@@ -42,10 +44,10 @@ type Cache interface {
 	Expire(key string, ex int64) error
 
 	// Incr increment key
-	Incr(key string, delta string) (string, error)
+	Incr(key string, delta interface{}) (string, error)
 
 	// Decr Decrement key
-	Decr(key string, delta string) (string, error)
+	Decr(key string, delta interface{}) (string, error)
 
 	// func for hashes
 
@@ -53,13 +55,13 @@ type Cache interface {
 	HGet(key string, hk string) (string, error)
 
 	// HSet set hash key
-	HSet(key string, hk string, value string) error
+	HSet(key string, hk string, value interface{}) error
 
 	// HMGet get multiple hash keys
 	HMGet(key string, hks []string) (map[string]string, error)
 
 	// HMSet set multiple hash keys
-	HMSet(key string, kvs map[string]string) error
+	HMSet(key string, kvs map[string]interface{}) error
 
 	// HGetAll get all hash keys
 	HGetAll(key string) (map[string]string, error)
@@ -71,10 +73,10 @@ type Cache interface {
 	HExists(key string, hk string) (bool, error)
 
 	// HIncr increment value of hash key
-	HIncr(key string, hk string, delta string) (string, error)
+	HIncr(key string, hk string, delta interface{}) (string, error)
 
 	// HDecr decrement value of hash key
-	HDecr(key string, hk string, delta string) (string, error)
+	HDecr(key string, hk string, delta interface{}) (string, error)
 }
 
 // NewCache create new cache instance
@@ -127,10 +129,7 @@ func (c *cacheImpl) FlushMemory() {
 // BeginTransaction start a transaction if none active
 func (c *cacheImpl) BeginTransaction() Transaction {
 	if c.tx == nil || c.tx.active == false {
-		c.tx = &transImpl{
-			active: true,
-			c:      c,
-		}
+		c.tx = newTransImpl(c)
 	}
 	return c.tx
 }
@@ -160,28 +159,43 @@ func (c *cacheImpl) Get(key string) (string, error) {
 	return v, err
 }
 
+// ValueToString convert interface{} value to string
+func ValueToString(value interface{}) string {
+	switch value.(type) {
+	case int, int32, int64:
+		return fmt.Sprintf("%d", value)
+	case float32, float64:
+		return fmt.Sprintf("%f", value)
+	case string:
+		return value.(string)
+	case []byte:
+		return string(value.([]byte))
+	}
+	return ""
+}
+
 // Set key-value pair
-func (c *cacheImpl) Set(key string, value string) error {
+func (c *cacheImpl) Set(key string, value interface{}) error {
 	tx := c.getCurrentTransaction()
 	if tx != nil {
 		tx.onSet(key, value)
-		c.keys[key] = value
+		c.keys[key] = ValueToString(value)
 		return nil
 	}
 	err := c.options.Driver.Set(key, value)
 	if err == nil {
-		c.keys[key] = value
+		c.keys[key] = ValueToString(value)
 	}
 	return err
 }
 
 // MGet get multiple keys
 func (c *cacheImpl) MGet(keys []string) (map[string]string, error) {
-	return nil, nil
+	return c.options.Driver.MGet(keys)
 }
 
 // MSet set multiple key-value pairs
-func (c *cacheImpl) MSet(kvs map[string]string) error {
+func (c *cacheImpl) MSet(kvs map[string]interface{}) error {
 	return nil
 }
 
@@ -227,7 +241,7 @@ func (c *cacheImpl) Expire(key string, ex int64) error {
 }
 
 // Incr increment key
-func (c *cacheImpl) Incr(key string, delta string) (string, error) {
+func (c *cacheImpl) Incr(key string, delta interface{}) (string, error) {
 	nv, err := c.options.Driver.Incr(key, delta)
 	tx := c.getCurrentTransaction()
 	if tx != nil {
@@ -237,7 +251,7 @@ func (c *cacheImpl) Incr(key string, delta string) (string, error) {
 }
 
 // Decr increment key
-func (c *cacheImpl) Decr(key string, delta string) (string, error) {
+func (c *cacheImpl) Decr(key string, delta interface{}) (string, error) {
 	nv, err := c.options.Driver.Decr(key, delta)
 	tx := c.getCurrentTransaction()
 	if tx != nil {
@@ -254,7 +268,7 @@ func (c *cacheImpl) HGet(key string, hk string) (string, error) {
 }
 
 // HSet set hash key
-func (c *cacheImpl) HSet(key string, hk string, value string) error {
+func (c *cacheImpl) HSet(key string, hk string, value interface{}) error {
 	return nil
 }
 
@@ -264,13 +278,13 @@ func (c *cacheImpl) HMGet(key string, hks []string) (map[string]string, error) {
 }
 
 // HMSet set multiple hash keys
-func (c *cacheImpl) HMSet(key string, kvs map[string]string) error {
+func (c *cacheImpl) HMSet(key string, kvs map[string]interface{}) error {
 	return nil
 }
 
 // HGetAll get all hash keys
 func (c *cacheImpl) HGetAll(key string) (map[string]string, error) {
-	return nil, nil
+	return c.options.Driver.HGetAll(key)
 }
 
 // HDel delete hash key
@@ -284,11 +298,11 @@ func (c *cacheImpl) HExists(key string, hk string) (bool, error) {
 }
 
 // HIncr increment value of hash key
-func (c *cacheImpl) HIncr(key string, hk string, delta string) (string, error) {
+func (c *cacheImpl) HIncr(key string, hk string, delta interface{}) (string, error) {
 	return "", nil
 }
 
 // HDecr decrement value of hash key
-func (c *cacheImpl) HDecr(key string, hk string, delta string) (string, error) {
+func (c *cacheImpl) HDecr(key string, hk string, delta interface{}) (string, error) {
 	return "", nil
 }
