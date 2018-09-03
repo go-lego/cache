@@ -59,7 +59,11 @@ func (r *redisDriver) Init() error {
 func (r *redisDriver) Get(key string) (string, error) {
 	c := r.pool.Get()
 	defer c.Close()
-	return redis.String(c.Do("GET", key))
+	v, err := redis.String(c.Do("GET", key))
+	if err != nil && err == redis.ErrNil {
+		return "", ErrValueNil
+	}
+	return v, err
 }
 
 // Set key-value pair
@@ -126,7 +130,7 @@ func (r *redisDriver) MSet(kvs map[string]interface{}) error {
 func (r *redisDriver) Del(key string) error {
 	c := r.pool.Get()
 	defer c.Close()
-	_, err := redis.String(c.Do("DEL", key))
+	_, err := c.Do("DEL", key)
 	return err
 }
 
@@ -141,7 +145,7 @@ func (r *redisDriver) Exists(key string) (bool, error) {
 func (r *redisDriver) Expire(key string, ex int64) error {
 	c := r.pool.Get()
 	defer c.Close()
-	_, err := redis.String(c.Do("EXPIRE", key, ex))
+	_, err := c.Do("EXPIRE", key, ex)
 	return err
 }
 
@@ -151,7 +155,11 @@ func (r *redisDriver) Incr(key string, delta interface{}) (string, error) {
 	defer c.Close()
 	switch delta.(type) {
 	case int, int32, int64:
-		return redis.String(c.Do("INCRBY", key, delta))
+		v, err := redis.Int64(c.Do("INCRBY", key, delta))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%d", v), nil
 	case float32, float64:
 		return redis.String(c.Do("INCRBYFLOAT", key, delta))
 	}
@@ -164,7 +172,11 @@ func (r *redisDriver) Decr(key string, delta interface{}) (string, error) {
 	defer c.Close()
 	switch delta.(type) {
 	case int, int32, int64:
-		return redis.String(c.Do("DECRBY", key, delta))
+		v, err := redis.Int64(c.Do("DECRBY", key, delta))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%d", v), nil
 	case float32:
 		return redis.String(c.Do("INCRBYFLOAT", key, -delta.(float32)))
 	case float64:
@@ -186,7 +198,7 @@ func (r *redisDriver) HGet(key string, hk string) (string, error) {
 func (r *redisDriver) HSet(key string, hk string, value interface{}) error {
 	c := r.pool.Get()
 	defer c.Close()
-	_, err := redis.String(c.Do("HSET", key, hk, value))
+	_, err := c.Do("HSET", key, hk, value)
 	return err
 }
 
@@ -199,7 +211,15 @@ func (r *redisDriver) HMGet(key string, hks []string) (map[string]string, error)
 	for i, k := range hks {
 		tmp[i+1] = k
 	}
-	return redis.StringMap(c.Do("HMGET", tmp...))
+	vals, err := redis.Strings(c.Do("HMGET", tmp...))
+	if err != nil {
+		return nil, err
+	}
+	ret := make(map[string]string, len(key)*2)
+	for i, v := range vals {
+		ret[hks[i]] = v
+	}
+	return ret, nil
 }
 
 // HMSet set multiple hash keys
@@ -227,7 +247,7 @@ func (r *redisDriver) HMSet(key string, kvs map[string]interface{}) error {
 			i += 2
 		}
 	}
-	_, err := redis.String(c.Do("HMSET", tmp...))
+	_, err := c.Do("HMSET", tmp...)
 	return err
 }
 
@@ -242,7 +262,7 @@ func (r *redisDriver) HGetAll(key string) (map[string]string, error) {
 func (r *redisDriver) HDel(key string, hk string) error {
 	c := r.pool.Get()
 	defer c.Close()
-	_, err := redis.String(c.Do("HDEL", key, hk))
+	_, err := c.Do("HDEL", key, hk)
 	return err
 }
 
@@ -259,7 +279,11 @@ func (r *redisDriver) HIncr(key string, hk string, delta interface{}) (string, e
 	defer c.Close()
 	switch delta.(type) {
 	case int, int32, int64:
-		return redis.String(c.Do("HINCRBY", key, hk, delta))
+		v, err := redis.Int64(c.Do("HINCRBY", key, hk, delta))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%d", v), nil
 	case float32, float64:
 		return redis.String(c.Do("HINCRBYFLOAT", key, hk, delta))
 	}
@@ -272,11 +296,23 @@ func (r *redisDriver) HDecr(key string, hk string, delta interface{}) (string, e
 	defer c.Close()
 	switch delta.(type) {
 	case int:
-		return redis.String(c.Do("HINCRBY", key, hk, -delta.(int)))
+		v, err := redis.Int64(c.Do("HINCRBY", key, hk, -delta.(int)))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%d", v), nil
 	case int32:
-		return redis.String(c.Do("HINCRBY", key, hk, -delta.(int32)))
+		v, err := redis.Int64(c.Do("HINCRBY", key, hk, -delta.(int32)))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%d", v), nil
 	case int64:
-		return redis.String(c.Do("HINCRBY", key, hk, -delta.(int64)))
+		v, err := redis.Int64(c.Do("HINCRBY", key, hk, -delta.(int64)))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%d", v), nil
 	case float32:
 		return redis.String(c.Do("HINCRBYFLOAT", key, hk, -delta.(float32)))
 	case float64:

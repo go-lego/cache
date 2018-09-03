@@ -75,8 +75,8 @@ var (
 	// ErrNotSupported error indicates that the cache type is not supported yet
 	ErrNotSupported = errors.New("Cache type not supported yet")
 
-	// ErrKeyNotFound error indicates that key not found
-	ErrKeyNotFound = errors.New("Cache key not found")
+	// ErrValueNil cache value nil, indicates that key not exist
+	ErrValueNil = errors.New("driver: value nil")
 
 	// DefaultDriver default driver
 	DefaultDriver = newRedisDriver(newOptions())

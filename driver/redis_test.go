@@ -33,7 +33,7 @@ func TestRedisGet(t *testing.T) {
 	}
 
 	_, err = r.Get("testno")
-	if err != redis.ErrNil {
+	if err != ErrValueNil {
 		t.Error("Expected error: ", redis.ErrNil, " but: ", err)
 	}
 }
@@ -146,7 +146,7 @@ func TestRedisIncr(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("INCRBY", "test1", 13).Expect("100")
+	c.Command("INCRBY", "test1", 13).Expect(int64(100))
 	c.Command("INCRBYFLOAT", "test2", 10.5).Expect("100.01")
 
 	nv, err := r.Incr("test1", 13)
@@ -172,7 +172,7 @@ func TestRedisDecr(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("DECRBY", "test1", 13).Expect("100")
+	c.Command("DECRBY", "test1", 13).Expect(int64(100))
 	c.Command("INCRBYFLOAT", "test2", -10.5).Expect("100.01")
 
 	nv, err := r.Decr("test1", 13)
@@ -215,7 +215,7 @@ func TestRedisHSet(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("HSET", "test1", "k1", "100").Expect("OK")
+	c.Command("HSET", "test1", "k1", "100").Expect(int64(0))
 
 	err := r.HSet("test1", "k1", "100")
 	if err != nil {
@@ -229,13 +229,13 @@ func TestRedisHMGet(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("HMGET", "test1", "k1", "k2", "k3").Expect([]interface{}{[]byte("k1"), []byte("ok"), []byte("k2"), []byte("good"), []byte("k3"), []byte("1")})
+	c.Command("HMGET", "test1", "k1", "k2", "k3", "k4").Expect([]interface{}{[]byte("ok"), []byte("good"), []byte("1"), nil})
 
-	m, err := r.HMGet("test1", []string{"k1", "k2", "k3"})
+	m, err := r.HMGet("test1", []string{"k1", "k2", "k3", "k4"})
 	if err != nil {
 		t.Error("No error was expected to HMGet, but: ", err)
 	}
-	if m["k1"] != "ok" || m["k2"] != "good" || m["k3"] != "1" {
+	if m["k1"] != "ok" || m["k2"] != "good" || m["k3"] != "1" || m["k4"] != "" {
 		t.Error("HMGet return value incorrect")
 	}
 }
@@ -247,7 +247,7 @@ func TestRedisHMSet(t *testing.T) {
 		test: true,
 	}
 
-	c.Command("HMSET", "test1", "k1", "ok", "k2", "good", "k3", "1").Expect("ok")
+	c.Command("HMSET", "test1", "k1", "ok", "k2", "good", "k3", "1").Expect("OK")
 
 	err := r.HMSet("test1", map[string]interface{}{"k1": "ok", "k2": "good", "k3": "1"})
 	if err != nil {
@@ -278,7 +278,7 @@ func TestRedisHDel(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("HDEL", "test1", "k1").Expect("OK")
+	c.Command("HDEL", "test1", "k1").Expect(int64(0))
 
 	err := r.HDel("test1", "k1")
 	if err != nil {
@@ -317,7 +317,7 @@ func TestRedisHIncr(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("HINCRBY", "test1", "k1", 13).Expect("100")
+	c.Command("HINCRBY", "test1", "k1", 13).Expect(int64(100))
 	c.Command("HINCRBYFLOAT", "test1", "k2", 10.5).Expect("100.01")
 
 	nv, err := r.HIncr("test1", "k1", 13)
@@ -343,7 +343,7 @@ func TestRedisHDecr(t *testing.T) {
 		pool: &testRedisPool{conn: c},
 	}
 
-	c.Command("HINCRBY", "test1", "k1", -13).Expect("100")
+	c.Command("HINCRBY", "test1", "k1", -13).Expect(int64(100))
 	c.Command("HINCRBYFLOAT", "test1", "k2", -10.5).Expect("100.01")
 
 	nv, err := r.HDecr("test1", "k1", 13)
