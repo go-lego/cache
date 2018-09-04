@@ -8,16 +8,19 @@ import (
 )
 
 func main() {
-	dv := driver.NewDriver(driver.Port(6379))
+	dv, _ := driver.NewDriver(driver.Port(6379))
 	r := cache.NewCache(cache.Driver(dv))
 	if err := r.Init(); err != nil {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println(r.Get("int"))
-	fmt.Println(r.Incr("int", 5))
+	// fmt.Println(r.Get("int"))
+	// fmt.Println(r.Incr("int", 5))
 	// fmt.Println(r.MGet([]string{"test.1", "test.2"}))
+	fmt.Println(dv.HGet("tt", "b"))
 	// fmt.Println(r.HGetAll("ttt"))
+	//fmt.Println(r.Del("test"))
+	// fmt.Println(dv.HDecr("tt", "d", 0.05))
 	// r.Get("test")
 	// r.Set("test", "test")
 	// r.Get("test")
@@ -26,6 +29,7 @@ func main() {
 	// 	fmt.Println(err)
 	// 	return
 	// }
+	// fmt.Println(redis.String(r.Do("INCRBY", "testincr", 1)))
 	// ss, err := redis.Strings(r.Do("MGET", "test.1", "ssssss", "test.2", "kkkkk"))
 	// for _, s := range ss {
 	// 	fmt.Printf("%s %T\n", s, s)

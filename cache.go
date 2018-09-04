@@ -84,6 +84,8 @@ func NewCache(opts ...Option) Cache {
 	return newCacheImpl(opts...)
 }
 
+const flagValueNil = "__value_nil__"
+
 // cacheImpl cache implementation
 type cacheImpl struct {
 	options Options
@@ -146,15 +148,20 @@ func (c *cacheImpl) getCurrentTransaction() *transImpl {
 
 // Get value by key
 func (c *cacheImpl) Get(key string) (string, error) {
-	if _, ok := c.delKeys[key]; ok {
-		return "", driver.ErrKeyNotFound
+	if _, ok := c.delKeys[key]; ok { // already deleted
+		return "", ErrValueNil
 	}
 	if v, ok := c.keys[key]; ok {
+		if v == flagValueNil { // get before but not found
+			return "", ErrValueNil
+		}
 		return v, nil
 	}
 	v, err := c.options.Driver.Get(key)
 	if err == nil {
 		c.keys[key] = v
+	} else if err == driver.ErrValueNil { // not found, set nil value flag
+		c.keys[key] = flagValueNil
 	}
 	return v, err
 }
@@ -179,6 +186,7 @@ func (c *cacheImpl) Set(key string, value interface{}) error {
 	tx := c.getCurrentTransaction()
 	if tx != nil {
 		tx.onSet(key, value)
+		delete(c.delKeys, key)
 		c.keys[key] = ValueToString(value)
 		return nil
 	}
@@ -191,12 +199,54 @@ func (c *cacheImpl) Set(key string, value interface{}) error {
 
 // MGet get multiple keys
 func (c *cacheImpl) MGet(keys []string) (map[string]string, error) {
-	return c.options.Driver.MGet(keys)
+	hits := map[string]string{}
+	noh := []string{}
+	for _, k := range keys {
+		if _, ok := c.delKeys[k]; ok {
+			hits[k] = ""
+			continue
+		}
+		if v, ok := c.keys[k]; ok {
+			if v == flagValueNil {
+				hits[k] = ""
+			} else {
+				hits[k] = v
+			}
+			continue
+		}
+		noh = append(noh, k)
+	}
+	if len(noh) > 0 {
+		nm, err := c.options.Driver.MGet(noh)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range nm { // merge new map to hits
+			hits[k] = v
+		}
+	}
+	return hits, nil
 }
 
 // MSet set multiple key-value pairs
 func (c *cacheImpl) MSet(kvs map[string]interface{}) error {
-	return nil
+	tx := c.getCurrentTransaction()
+	if tx != nil {
+		tx.onMSet(kvs)
+		for k, v := range kvs {
+			delete(c.delKeys, k)
+			c.keys[k] = ValueToString(v)
+		}
+		return nil
+	}
+	err := c.options.Driver.MSet(kvs)
+	if err == nil {
+		for k, v := range kvs {
+			delete(c.delKeys, k)
+			c.keys[k] = ValueToString(v)
+		}
+	}
+	return err
 }
 
 // Del delete specified key
@@ -221,8 +271,11 @@ func (c *cacheImpl) Exists(key string) (bool, error) {
 	if _, ok := c.delKeys[key]; ok { // already deleted
 		return false, nil
 	}
-	if _, ok := c.keys[key]; ok { // already loaded into memory
-		return true, nil
+	if v, ok := c.keys[key]; ok { // already loaded into memory
+		if v != flagValueNil {
+			return true, nil
+		}
+		return false, nil
 	}
 	if _, ok := c.hsets[key]; ok { // already loaded into memory
 		return true, nil
@@ -243,6 +296,11 @@ func (c *cacheImpl) Expire(key string, ex int64) error {
 // Incr increment key
 func (c *cacheImpl) Incr(key string, delta interface{}) (string, error) {
 	nv, err := c.options.Driver.Incr(key, delta)
+	if err != nil {
+		return "", err
+	}
+	delete(c.delKeys, key)
+	c.keys[key] = nv
 	tx := c.getCurrentTransaction()
 	if tx != nil {
 		tx.onIncr(key, delta)
@@ -253,6 +311,11 @@ func (c *cacheImpl) Incr(key string, delta interface{}) (string, error) {
 // Decr increment key
 func (c *cacheImpl) Decr(key string, delta interface{}) (string, error) {
 	nv, err := c.options.Driver.Decr(key, delta)
+	if err != nil {
+		return "", err
+	}
+	delete(c.delKeys, key)
+	c.keys[key] = nv
 	tx := c.getCurrentTransaction()
 	if tx != nil {
 		tx.onDecr(key, delta)
@@ -262,47 +325,196 @@ func (c *cacheImpl) Decr(key string, delta interface{}) (string, error) {
 
 // func for hashes
 
+func (c *cacheImpl) setMemoryHashSet(key string, hk string, val string) {
+	m, ok := c.hsets[key]
+	if !ok {
+		m = map[string]string{}
+	}
+	m[hk] = val
+	c.hsets[key] = m
+}
+
 // HGEt get hash key
 func (c *cacheImpl) HGet(key string, hk string) (string, error) {
-	return "", nil
+	if _, ok := c.delKeys[key]; ok { // key is deleted
+		return "", ErrValueNil
+	}
+	if m, ok := c.hsets[key]; ok { // hash set is loaded into memory
+		if v, o := m[hk]; o {
+			if v == flagValueNil {
+				return "", ErrValueNil
+			}
+			return v, nil
+		}
+	}
+	v, err := c.options.Driver.HGet(key, hk)
+	if err != nil && err != driver.ErrValueNil {
+		return "", err
+	}
+	if err == driver.ErrValueNil {
+		v = flagValueNil
+		err = ErrValueNil
+	}
+	delete(c.delKeys, key)
+	c.setMemoryHashSet(key, hk, v)
+	return v, err
 }
 
 // HSet set hash key
 func (c *cacheImpl) HSet(key string, hk string, value interface{}) error {
-	return nil
+	tx := c.getCurrentTransaction()
+	if tx != nil {
+		tx.onHSet(key, hk, value)
+		delete(c.delKeys, key)
+		c.setMemoryHashSet(key, hk, ValueToString(value))
+		return nil
+	}
+	err := c.options.Driver.HSet(key, hk, value)
+	if err == nil {
+		delete(c.delKeys, key)
+		c.setMemoryHashSet(key, hk, ValueToString(value))
+	}
+	return err
 }
 
 // HMGet get multiple hash keys
 func (c *cacheImpl) HMGet(key string, hks []string) (map[string]string, error) {
-	return nil, nil
+	hits := map[string]string{}
+	if _, ok := c.delKeys[key]; ok { // already deleted whole key
+		return hits, nil
+	}
+	noh := []string{}
+	if m, ok := c.hsets[key]; ok {
+		for _, hk := range hks {
+			if v, o := m[hk]; o {
+				if v == flagValueNil {
+					hits[hk] = ""
+				} else {
+					hits[hk] = v
+				}
+			} else {
+				noh = append(noh, hk)
+			}
+		}
+	} else {
+		noh = hks
+	}
+
+	if len(noh) > 0 {
+		nm, err := c.options.Driver.HMGet(key, noh)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range nm {
+			hits[k] = v
+			c.setMemoryHashSet(key, k, v)
+		}
+	}
+
+	return hits, nil
 }
 
 // HMSet set multiple hash keys
 func (c *cacheImpl) HMSet(key string, kvs map[string]interface{}) error {
-	return nil
+	tx := c.getCurrentTransaction()
+	if tx != nil {
+		tx.onHMSet(key, kvs)
+		delete(c.delKeys, key)
+		for k, v := range kvs {
+			c.setMemoryHashSet(key, k, ValueToString(v))
+		}
+		return nil
+	}
+
+	err := c.options.Driver.HMSet(key, kvs)
+	if err == nil {
+		delete(c.delKeys, key)
+		for k, v := range kvs {
+			c.setMemoryHashSet(key, k, ValueToString(v))
+		}
+	}
+	return err
 }
 
 // HGetAll get all hash keys
 func (c *cacheImpl) HGetAll(key string) (map[string]string, error) {
-	return c.options.Driver.HGetAll(key)
+	if _, ok := c.delKeys[key]; ok {
+		return map[string]string{}, nil
+	}
+	ret, err := c.options.Driver.HGetAll(key)
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := c.hsets[key]; ok {
+		for k, v := range m {
+			if v == flagValueNil {
+				ret[k] = ""
+			} else {
+				ret[k] = v
+			}
+		}
+	}
+	return ret, err
 }
 
 // HDel delete hash key
 func (c *cacheImpl) HDel(key string, hk string) error {
-	return nil
+	tx := c.getCurrentTransaction()
+	if tx != nil {
+		tx.onHDel(key, hk)
+		c.setMemoryHashSet(key, hk, flagValueNil)
+		return nil
+	}
+
+	err := c.options.Driver.HDel(key, hk)
+	if err == nil {
+		c.setMemoryHashSet(key, hk, flagValueNil)
+	}
+	return err
 }
 
 // HExists check if the given hash key exists
 func (c *cacheImpl) HExists(key string, hk string) (bool, error) {
-	return false, nil
+	if _, ok := c.delKeys[key]; ok {
+		return false, nil
+	}
+	if m, ok := c.hsets[key]; ok {
+		if v, o := m[hk]; o {
+			if v == flagValueNil {
+				return false, nil
+			}
+			return true, nil
+		}
+	}
+	return c.options.Driver.HExists(key, hk)
 }
 
 // HIncr increment value of hash key
 func (c *cacheImpl) HIncr(key string, hk string, delta interface{}) (string, error) {
-	return "", nil
+	nv, err := c.options.Driver.HIncr(key, hk, delta)
+	if err != nil {
+		return "", err
+	}
+	delete(c.delKeys, key)
+	c.setMemoryHashSet(key, hk, nv)
+	tx := c.getCurrentTransaction()
+	if tx != nil {
+		tx.onHIncr(key, hk, delta)
+	}
+	return nv, err
 }
 
 // HDecr decrement value of hash key
 func (c *cacheImpl) HDecr(key string, hk string, delta interface{}) (string, error) {
-	return "", nil
+	nv, err := c.options.Driver.HDecr(key, hk, delta)
+	if err != nil {
+		return "", err
+	}
+	delete(c.delKeys, key)
+	c.setMemoryHashSet(key, hk, nv)
+	tx := c.getCurrentTransaction()
+	if tx != nil {
+		tx.onHDecr(key, hk, delta)
+	}
+	return nv, err
 }

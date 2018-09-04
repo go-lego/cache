@@ -72,8 +72,8 @@ type Driver interface {
 }
 
 var (
-	// ErrNotSupported error indicates that the cache type is not supported yet
-	ErrNotSupported = errors.New("Cache type not supported yet")
+	// ErrTypeNotSupported error indicates that the cache type is not supported yet
+	ErrTypeNotSupported = errors.New("driver: type not supported yet")
 
 	// ErrValueNil cache value nil, indicates that key not exist
 	ErrValueNil = errors.New("driver: value nil")
@@ -83,10 +83,10 @@ var (
 )
 
 // NewDriver create new cache instance
-func NewDriver(opts ...Option) Driver {
+func NewDriver(opts ...Option) (Driver, error) {
 	options := newOptions(opts...)
 	if options.Type == "redis" {
-		return newRedisDriver(options)
+		return newRedisDriver(options), nil
 	}
-	return nil
+	return nil, ErrTypeNotSupported
 }
